@@ -1,6 +1,8 @@
-from fastapi import FastAPI, BackgroundTasks
+from fastapi import FastAPI, BackgroundTasks, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
+from typing import List
 import os
+import json
 from dotenv import load_dotenv
 from services.orchestrator import Orchestrator, ResearchJob
 
@@ -26,13 +28,42 @@ async def root():
     return {"message": "Academic Writer API is running"}
 
 @app.post("/research")
-async def create_research(job: ResearchJob, background_tasks: BackgroundTasks):
+async def create_research(
+    background_tasks: BackgroundTasks,
+    topic: str = Form(...),
+    word_count: int = Form(...),
+    citation_style: str = Form(...),
+    discipline: str = Form(...),
+    optimization_prompt: str = Form(""),
+    files: List[UploadFile] = File(None)
+):
     job_id = f"job_{len(jobs) + 1}"
     jobs[job_id] = {"status": "processing", "data": None}
     
+    # Pre-save files to a temp location or project dir
+    temp_upload_dir = os.path.join("research_projects", "temp_uploads", job_id)
+    os.makedirs(temp_upload_dir, exist_ok=True)
+    
+    saved_file_paths = []
+    if files:
+        for file in files[:20]: # Limit to 20 files
+            file_path = os.path.join(temp_upload_dir, file.filename)
+            with open(file_path, "wb") as f:
+                content = await file.read()
+                f.write(content)
+            saved_file_paths.append(file_path)
+
+    job_data = ResearchJob(
+        topic=topic,
+        word_count=word_count,
+        citation_style=citation_style,
+        discipline=discipline,
+        optimization_prompt=optimization_prompt
+    )
+    
     async def run_task():
         try:
-            result = await orchestrator.run_research_task(job)
+            result = await orchestrator.run_research_task(job_data, saved_file_paths)
             jobs[job_id] = {"status": "completed", "data": result}
         except Exception as e:
             print(f"Job failed: {e}")

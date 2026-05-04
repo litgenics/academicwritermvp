@@ -1,14 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Search, FileText, Loader2, CheckCircle, Download, BookOpen } from 'lucide-react';
+import { Search, FileText, Loader2, CheckCircle, Download, BookOpen, Upload, FileUp, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-
-interface ResearchJob {
-  topic: str;
-  word_count: number;
-  citation_style: string;
-  discipline: string;
-}
 
 interface JobStatus {
   status: 'processing' | 'completed' | 'failed' | 'not_found';
@@ -25,16 +18,63 @@ function App() {
   const [wordCount, setWordCount] = useState(1000);
   const [citationStyle, setCitationStyle] = useState('APA 7');
   const [discipline, setDiscipline] = useState('Computer Science');
+  const [optimizationPrompt, setOptimizationPrompt] = useState('');
+  const [files, setFiles] = useState<File[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
   const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      addFiles(Array.from(e.target.files));
+    }
+  };
+
+  const addFiles = (newFiles: File[]) => {
+    setFiles(prev => {
+      const combined = [...prev, ...newFiles];
+      return combined.slice(0, 20); // Maintain 20 file limit
+    });
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files) {
+      addFiles(Array.from(e.dataTransfer.files));
+    }
+  };
+
+  const removeFile = (index: number) => {
+    setFiles(files.filter((_, i) => i !== index));
+  };
+
   const startResearch = async () => {
     try {
-      const response = await axios.post('http://localhost:8000/research', {
-        topic,
-        word_count: wordCount,
-        citation_style: citationStyle,
-        discipline
+      const formData = new FormData();
+      formData.append('topic', topic);
+      formData.append('word_count', wordCount.toString());
+      formData.append('citation_style', citationStyle);
+      formData.append('discipline', discipline);
+      formData.append('optimization_prompt', optimizationPrompt);
+      
+      files.forEach((file) => {
+        formData.append('files', file);
+      });
+
+      const response = await axios.post('http://localhost:8000/research', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
       });
       setJobId(response.data.job_id);
       setJobStatus({ status: 'processing' });
@@ -88,6 +128,61 @@ function App() {
               placeholder="e.g., The impact of Large Language Models on software engineering productivity"
               value={topic}
               onChange={(e) => setTopic(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Evidence Files (Max 20)</label>
+            <div className="flex flex-col gap-2">
+              <label 
+                className={`flex items-center justify-center gap-2 p-4 border-2 border-dashed rounded-lg cursor-pointer transition-all ${
+                  isDragging ? 'bg-blue-100 border-blue-500 scale-[1.02]' : 'hover:bg-blue-50 border-gray-300 hover:border-blue-400 text-gray-500'
+                }`}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+              >
+                <Upload className={`w-5 h-5 ${isDragging ? 'text-blue-600 animate-bounce' : ''}`} />
+                <span>{isDragging ? 'Drop files here' : 'Upload or Drag & Drop PDFs, DOCX, Images, or CSV/Excel'}</span>
+                <input 
+                  type="file" 
+                  multiple 
+                  className="hidden" 
+                  accept=".pdf,.docx,.doc,.png,.jpg,.jpeg,.txt,.csv,.xlsx,.xls"
+                  onChange={handleFileChange}
+                />
+              </label>
+              
+              {files.length > 0 && (
+                <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto p-1 mt-1">
+                  {files.map((file, i) => (
+                    <div key={i} className="flex items-center gap-1 bg-white px-2 py-1 rounded text-xs border border-gray-200 shadow-sm text-gray-600 group">
+                      <FileUp className={`w-3 h-3 ${file.name.match(/\.(csv|xlsx|xls)$/i) ? 'text-green-500' : 'text-blue-500'}`} />
+                      <span className="truncate max-w-[120px]">{file.name}</span>
+                      <button 
+                        onClick={() => removeFile(i)} 
+                        className="text-gray-400 hover:text-red-500 transition-colors ml-1 p-0.5 rounded-full hover:bg-red-50"
+                        title="Remove file"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1 text-blue-600 flex items-center gap-1">
+              Optimization Prompt (Optional)
+            </label>
+            <textarea 
+              className="w-full p-3 border border-blue-100 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none bg-blue-50/30 text-sm"
+              rows={2}
+              placeholder="e.g., Use the methodology from the lab results DOCX. Focus on empirical evidence."
+              value={optimizationPrompt}
+              onChange={(e) => setOptimizationPrompt(e.target.value)}
             />
           </div>
 
