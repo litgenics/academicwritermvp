@@ -18,7 +18,8 @@ class ResearchJob(BaseModel):
     discipline: str
     optimization_prompt: str = ""
 
-import pandas as pd
+import csv
+import io
 
 class Orchestrator:
     def __init__(self):
@@ -31,27 +32,36 @@ class Orchestrator:
         try:
             if ext == ".pdf":
                 reader = PdfReader(file_path)
-                return "".join([page.extract_text() for page in reader.pages])
+                # Truncate PDF extraction to first 50 pages to save memory
+                pages = reader.pages[:50]
+                return "".join([page.extract_text() for page in pages])
             elif ext == ".docx":
                 doc = Document(file_path)
-                return "\n".join([para.text for para in doc.paragraphs])
+                # Truncate DOCX to first 100 paragraphs
+                return "\n".join([para.text for para in doc.paragraphs[:100]])
             elif ext in [".csv", ".xlsx", ".xls"]:
-                df = pd.read_csv(file_path) if ext == ".csv" else pd.read_excel(file_path)
-                summary = f"Columns: {list(df.columns)}\n"
-                summary += f"Shape: {df.shape}\n"
-                summary += f"Stats:\n{df.describe().to_string()}\n"
-                summary += f"Head:\n{df.head(5).to_string()}"
-                analysis = await self.llm.analyze_data_snippet(summary, topic)
-                return f"DATASET ANALYSIS:\n{analysis}\nRAW SUMMARY:\n{summary}"
+                if ext == ".csv":
+                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                        reader = csv.reader(f)
+                        header = next(reader, [])
+                        rows = [next(reader, []) for _ in range(20)] # Sample 20 rows
+                        summary = f"Columns: {header}\nSample Rows: {rows}"
+                else:
+                    # For Excel, we still need a lightweight way or just skip statistical summary
+                    summary = "Excel file detected. Analysis restricted to headers/titles due to memory limits."
+                
+                analysis = await self.llm.analyze_data_snippet(summary[:5000], topic)
+                return f"DATASET ANALYSIS:\n{analysis}\nRAW SUMMARY SNIPPET:\n{summary[:2000]}"
             elif ext in [".png", ".jpg", ".jpeg", ".tiff", ".bmp"]:
                 try:
+                    # OCR is memory intensive, limit image size if possible in future
                     return pytesseract.image_to_string(Image.open(file_path))
                 except Exception as ocr_err:
-                    print(f"OCR not available on this server: {ocr_err}")
-                    return "[OCR Error: Image could not be parsed. Ensure Tesseract is installed on the server.]"
+                    print(f"OCR not available: {ocr_err}")
+                    return "[OCR Error: Image too large or engine missing]"
             else:
                 with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-                    return f.read()
+                    return f.read(15000) # Truncate plain text
         except Exception as e:
             print(f"Error processing {file_path}: {e}")
             return ""
