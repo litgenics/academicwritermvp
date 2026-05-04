@@ -38,7 +38,7 @@ async def create_research(
     files: List[UploadFile] = File(None)
 ):
     job_id = f"job_{len(jobs) + 1}"
-    jobs[job_id] = {"status": "processing", "data": None}
+    jobs[job_id] = {"status": "processing", "progress": "Initializing...", "data": None}
     
     # Pre-save files to a temp location or project dir
     temp_upload_dir = os.path.join("research_projects", "temp_uploads", job_id)
@@ -61,13 +61,19 @@ async def create_research(
         optimization_prompt=optimization_prompt
     )
     
+    def update_progress(step: str):
+        if job_id in jobs:
+            jobs[job_id]["progress"] = step
+
     async def run_task():
         try:
-            result = await orchestrator.run_research_task(job_data, saved_file_paths)
-            jobs[job_id] = {"status": "completed", "data": result}
+            result = await orchestrator.run_research_task(job_data, saved_file_paths, progress_callback=update_progress)
+            jobs[job_id] = {"status": "completed", "progress": "Done!", "data": result}
         except Exception as e:
-            print(f"Job failed: {e}")
-            jobs[job_id] = {"status": "failed", "error": str(e)}
+            import traceback
+            error_details = traceback.format_exc()
+            print(f"Job failed: {error_details}")
+            jobs[job_id] = {"status": "failed", "progress": "Error", "error": str(e), "details": error_details}
 
     background_tasks.add_task(run_task)
     return {"job_id": job_id}

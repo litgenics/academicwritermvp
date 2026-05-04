@@ -5,12 +5,14 @@ import ReactMarkdown from 'react-markdown';
 
 interface JobStatus {
   status: 'processing' | 'completed' | 'failed' | 'not_found';
+  progress?: string;
   data?: {
     output: string;
     sources: string[];
     project_dir: string;
   };
   error?: string;
+  details?: string;
 }
 
 // Live Deployment Config
@@ -253,23 +255,13 @@ function App() {
                 <Loader2 className="w-12 h-12 text-blue-600 animate-spin relative" />
               </div>
               <h3 className="mt-8 text-xl font-medium">Conducting Research Pipeline</h3>
-              <ul className="mt-6 space-y-3 text-sm text-gray-600 w-full max-w-xs">
-                <li className="flex items-center gap-2">
-                  <CheckCircle className="w-4 h-4 text-green-500" /> Generating Boolean Queries
-                </li>
-                <li className="flex items-center gap-2">
-                  <div className="w-4 h-4 rounded-full border-2 border-blue-500 border-t-transparent animate-spin"></div> 
-                  Iterating Searches & Downloads
-                </li>
-                <li className="flex items-center gap-2 opacity-40">
-                  <div className="w-4 h-4 rounded-full border-2 border-gray-300"></div> 
-                  Parsing PDFs & Synthesizing Evidence
-                </li>
-                <li className="flex items-center gap-2 opacity-40">
-                  <div className="w-4 h-4 rounded-full border-2 border-gray-300"></div> 
-                  Drafting Academic Paper
-                </li>
-              </ul>
+              <p className="mt-2 text-blue-500 font-medium animate-pulse">{jobStatus.progress || 'Processing...'}</p>
+              
+              <div className="mt-8 w-full max-w-md bg-gray-50 rounded-lg p-4 border text-sm text-gray-500">
+                <p className="flex items-center gap-2 mb-2"><CheckCircle className="w-4 h-4 text-green-500" /> Initializing Environment</p>
+                <p className="flex items-center gap-2 mb-2"><CheckCircle className="w-4 h-4 text-green-500" /> Processing Evidence</p>
+                <p className="flex items-center gap-2 mb-2"><div className="w-4 h-4 rounded-full border-2 border-blue-500 border-t-transparent animate-spin"></div> Generating Outline & Searching</p>
+              </div>
             </div>
           ) : jobStatus.status === 'completed' && jobStatus.data ? (
             <div className="h-full flex flex-col">
@@ -305,8 +297,28 @@ function App() {
               </div>
             </div>
           ) : (
-            <div className="h-full flex flex-col items-center justify-center text-red-500">
-              <p>Job failed: {jobStatus.error || 'Unknown error'}</p>
+            <div className="h-full flex flex-col items-center justify-center text-center p-6">
+              <div className="bg-red-50 p-4 rounded-full mb-4">
+                <X className="w-10 h-10 text-red-500" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">Research Job Failed</h3>
+              <p className="text-red-600 font-medium mb-4">{jobStatus.error || 'Unknown error'}</p>
+              
+              {jobStatus.details && (
+                <div className="w-full bg-gray-900 rounded-lg p-4 text-left overflow-x-auto mb-6">
+                  <p className="text-xs text-gray-400 mb-2 font-mono uppercase tracking-wider">Technical Traceback:</p>
+                  <pre className="text-xs text-red-400 font-mono leading-relaxed whitespace-pre-wrap">
+                    {jobStatus.details}
+                  </pre>
+                </div>
+              )}
+              
+              <button 
+                onClick={() => setJobStatus(null)}
+                className="px-6 py-2 bg-gray-900 text-white rounded-lg hover:bg-black transition-colors"
+              >
+                Try Again
+              </button>
             </div>
           )}
         </section>

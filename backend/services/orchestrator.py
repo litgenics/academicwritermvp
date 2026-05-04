@@ -69,8 +69,14 @@ class Orchestrator:
             all_dataset_links.extend([r.get('link') for r in results if r.get('link')])
         return list(set(all_dataset_links))
 
-    async def run_research_task(self, job: ResearchJob, uploaded_files: List[str] = None):
+    async def run_research_task(self, job: ResearchJob, uploaded_files: List[str] = None, progress_callback=None):
+        def log(msg: str):
+            print(msg)
+            if progress_callback:
+                progress_callback(msg)
+
         # 1. Setup workspace
+        log("Setting up workspace...")
         project_id = job.topic.lower().replace(" ", "_")[:20] + "_" + os.urandom(2).hex()
         project_dir = os.path.join(self.workspace_root, project_id)
         os.makedirs(project_dir, exist_ok=True)
@@ -78,8 +84,9 @@ class Orchestrator:
         # 2. Process Uploaded Files (Primary Evidence & Data)
         primary_notes = []
         if uploaded_files:
-            print(f"Processing {len(uploaded_files)} uploaded files...")
+            log(f"Processing {len(uploaded_files)} uploaded files...")
             for fpath in uploaded_files:
+                log(f"Extracting: {os.path.basename(fpath)}")
                 content = await self.extract_text_or_data(fpath, job.topic)
                 if content:
                     # If it was a dataset, the summary is already analytical
@@ -90,52 +97,54 @@ class Orchestrator:
                         primary_notes.append(f"UPLOADED SOURCE ({os.path.basename(fpath)}): {note}")
 
         # 3. Dataset Discovery (New Phase for "The Best" Research)
-        print("Discovering relevant public datasets...")
+        log("Discovering relevant public datasets...")
         dataset_links = await self.discover_datasets(job.topic)
         if dataset_links:
             primary_notes.append(f"RECOMMENDED PUBLIC DATASETS FOR FURTHER ANALYSIS: {', '.join(dataset_links[:5])}")
 
         # 4. Generate Dynamic Outline
-        print("Generating dynamic outline...")
+        log("Generating dynamic research outline...")
         outline = await self.llm.generate_dynamic_outline(job.topic, primary_notes, job.optimization_prompt)
         if not outline:
+            log("Fallback to standard outline.")
             outline = ["Introduction", "Literature Review", "Analysis", "Conclusion"]
 
-        # 4. Generate Queries for Supplementary Research
-        print(f"Generating queries for: {job.topic}")
+        # 5. Generate Queries for Supplementary Research
+        log("Generating search queries...")
         queries = await self.llm.generate_queries(job.topic)
         
-        # 5. Search & Download (Supplementary Evidence)
+        # 6. Search & Download (Supplementary Evidence)
         target_sources = max(3, job.word_count // 300)
         supplementary_downloaded = []
         
         for query in queries:
             if len(supplementary_downloaded) >= target_sources:
                 break
-            print(f"Searching: {query}")
+            log(f"Searching web for: {query}")
             results = hybrid_search(query, target_count=target_sources)
             downloaded = iterative_download(results, project_dir, target_sources - len(supplementary_downloaded))
             supplementary_downloaded.extend(downloaded)
             
-        # 6. Parsing Supplementary Notes
+        # 7. Parsing Supplementary Notes
         supplementary_notes = []
         for pdf_path in supplementary_downloaded:
-            print(f"Parsing supplementary: {pdf_path}")
+            log(f"Parsing web source: {os.path.basename(pdf_path)}")
             text = await self.extract_text_or_data(pdf_path, job.topic)
             if text:
                 note = await self.llm.summarize_paper(text)
                 supplementary_notes.append(f"WEB SOURCE: {note}")
                 
-        # 7. Drafting
+        # 8. Drafting
         all_evidence = primary_notes + supplementary_notes
         full_paper = f"# {job.topic}\n\n"
         
-        for section in outline:
-            print(f"Drafting: {section}")
+        for i, section in enumerate(outline):
+            log(f"Drafting section {i+1}/{len(outline)}: {section}")
             content = await self.llm.draft_section(section, all_evidence, job.dict(), job.optimization_prompt)
             full_paper += f"## {section}\n\n{content}\n\n"
             
-        # 8. Save Results
+        # 9. Save Results
+        log("Finalizing paper...")
         output_path = os.path.join(project_dir, "output.md")
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(full_paper)
