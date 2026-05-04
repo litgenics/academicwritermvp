@@ -13,6 +13,8 @@ interface JobStatus {
   error?: string;
 }
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+
 function App() {
   const [topic, setTopic] = useState('');
   const [wordCount, setWordCount] = useState(1000);
@@ -71,7 +73,7 @@ function App() {
         formData.append('files', file);
       });
 
-      const response = await axios.post('http://localhost:8000/research', formData, {
+      const response = await axios.post(`${API_BASE_URL}/research`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -89,7 +91,7 @@ function App() {
     if (jobId && jobStatus?.status === 'processing') {
       interval = setInterval(async () => {
         try {
-          const response = await axios.get(`http://localhost:8000/research/${jobId}`);
+          const response = await axios.get(`${API_BASE_URL}/research/${jobId}`);
           setJobStatus(response.data);
           if (response.data.status !== 'processing') {
             clearInterval(interval);
