@@ -83,9 +83,10 @@ function App() {
       });
       setJobId(response.data.job_id);
       setJobStatus({ status: 'processing' });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error starting research:', error);
-      alert('Failed to start research job');
+      const msg = error.response?.data?.detail || error.message || 'Unknown error';
+      alert(`Failed to start research job: ${msg}`);
     }
   };
 
