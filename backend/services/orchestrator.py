@@ -44,7 +44,11 @@ class Orchestrator:
                 analysis = await self.llm.analyze_data_snippet(summary, topic)
                 return f"DATASET ANALYSIS:\n{analysis}\nRAW SUMMARY:\n{summary}"
             elif ext in [".png", ".jpg", ".jpeg", ".tiff", ".bmp"]:
-                return pytesseract.image_to_string(Image.open(file_path))
+                try:
+                    return pytesseract.image_to_string(Image.open(file_path))
+                except Exception as ocr_err:
+                    print(f"OCR not available on this server: {ocr_err}")
+                    return "[OCR Error: Image could not be parsed. Ensure Tesseract is installed on the server.]"
             else:
                 with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                     return f.read()

@@ -92,13 +92,65 @@ def search_scholarly(query: str, max_results: int = 5) -> List[SearchResult]:
         print(f"Scholarly was blocked or failed: {e}")
         return []
 
-def hybrid_search(query: str, target_count: int = 5) -> List[SearchResult]:
-    # 1. Try Scholarly first (as it covers more ground)
-    results = search_scholarly(query, max_results=target_count)
+def search_serpapi_scholar(query: str, max_results: int = 5) -> List[SearchResult]:
+    api_key = os.getenv("SERPAPI_KEY")
+    if not api_key or api_key == "your_serpapi_key_here":
+        return []
     
-    # 2. Fill gaps with ArXiv
+    url = "https://serpapi.com/search"
+    params = {
+        "engine": "google_scholar",
+        "q": query,
+        "api_key": api_key,
+        "num": max_results
+    }
+    
+    try:
+        response = requests.get(url, params=params, timeout=15)
+        if response.status_code != 200:
+            return []
+        
+        data = response.json()
+        results = []
+        for res in data.get("organic_results", []):
+            resources = res.get("resources", [])
+            pdf_url = None
+            for resource in resources:
+                if resource.get("file_format") == "PDF" or "pdf" in resource.get("link", "").lower():
+                    pdf_url = resource.get("link")
+                    break
+            
+            # If no resource link, try the main link if it looks like a PDF
+            if not pdf_url and "pdf" in res.get("link", "").lower():
+                pdf_url = res.get("link")
+
+            if pdf_url:
+                results.append(SearchResult(
+                    title=res.get("title", "Unknown Title"),
+                    authors=[a.get("name") for a in res.get("publication_info", {}).get("authors", [])],
+                    summary=res.get("snippet", ""),
+                    pdf_url=pdf_url,
+                    published=res.get("publication_info", {}).get("summary", ""),
+                    source="Google Scholar (via SerpAPI)"
+                ))
+        return results
+    except Exception as e:
+        print(f"SerpAPI search error: {e}")
+        return []
+
+def hybrid_search(query: str, target_count: int = 5) -> List[SearchResult]:
+    # 1. Try SerpAPI first if available
+    results = search_serpapi_scholar(query, max_results=target_count)
+    
+    # 2. Try Scholarly if SerpAPI failed or returned nothing
     if len(results) < target_count:
-        print(f"Scholar only found {len(results)} PDFs. Falling back to ArXiv...")
+        print(f"SerpAPI only found {len(results)} PDFs. Trying Scholarly...")
+        scholarly_results = search_scholarly(query, max_results=target_count - len(results))
+        results.extend(scholarly_results)
+
+    # 3. Fill gaps with ArXiv
+    if len(results) < target_count:
+        print(f"Scholar tools only found {len(results)} PDFs. Falling back to ArXiv...")
         arxiv_results = search_arxiv(query, max_results=target_count - len(results))
         results.extend(arxiv_results)
         
